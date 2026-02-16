@@ -49,7 +49,7 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
       const response = ws.lastResponse;
       setIsProcessing(false);
       setMessages(prev => [...prev, { role: 'assistant', content: response.text }]);
-      if (useVoice && speech.isSupported) {
+      if (useVoice && speech.isTTSSupported) {
         speech.speak(response.text);
       }
     }
@@ -73,12 +73,19 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
   }, [ws, isProcessing]);
 
   const handleMicToggle = useCallback(() => {
+    // Any tap unlocks iOS audio
+    speech.unlockAudio();
     if (speech.isListening) {
       speech.stopListening();
     } else {
       speech.stopSpeaking();
       speech.startListening();
     }
+  }, [speech]);
+
+  // Unlock iOS audio on any interaction with the modal
+  const handleModalInteraction = useCallback(() => {
+    speech.unlockAudio();
   }, [speech]);
 
   if (!isOpen) return null;
@@ -99,6 +106,8 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
           transition={{ duration: 0.3 }}
           className="glass-dark relative flex h-[600px] w-full max-w-lg flex-col overflow-hidden rounded-2xl"
           onClick={e => e.stopPropagation()}
+          onTouchStart={handleModalInteraction}
+          onMouseDown={handleModalInteraction}
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
@@ -133,7 +142,9 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
                   </svg>
                 </div>
                 <p className="text-sm text-white/70">
-                  {useVoice ? 'Tap the mic to start talking' : 'Type your message below'}
+                  {speech.isSTTSupported
+                    ? 'Tap the mic to start talking'
+                    : 'Type your message below — Alex will respond with voice'}
                 </p>
               </div>
             )}
@@ -173,8 +184,21 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
               </div>
             )}
 
+            {speech.isSpeaking && (
+              <div className="mb-3 flex items-center justify-center gap-2">
+                <div className="flex gap-0.5">
+                  {[...Array(5)].map((_, i) => (
+                    <span key={i} className="inline-block w-1 animate-pulse rounded-full bg-white/40" style={{ height: `${8 + Math.random() * 12}px`, animationDelay: `${i * 100}ms` }} />
+                  ))}
+                </div>
+                <button onClick={() => speech.stopSpeaking()} className="text-xs text-white/50 hover:text-white/80">
+                  Stop
+                </button>
+              </div>
+            )}
+
             <div className="flex items-center gap-3">
-              {useVoice && speech.isSupported && (
+              {speech.isSTTSupported && (
                 <button
                   onClick={handleMicToggle}
                   className={`shrink-0 rounded-full p-3 text-white transition-all ${speech.isListening ? 'mic-pulse' : 'hover:scale-105'}`}
@@ -188,7 +212,7 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
 
               <form
                 className="flex flex-1 items-center gap-2"
-                onSubmit={e => { e.preventDefault(); handleSend(inputText); }}
+                onSubmit={e => { e.preventDefault(); speech.unlockAudio(); handleSend(inputText); }}
               >
                 <input
                   type="text"
