@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'priceId required' }, { status: 400 });
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000';
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://gentic.pro';
 
     // Use Stripe REST API directly to avoid SDK connection issues on Vercel
     const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
