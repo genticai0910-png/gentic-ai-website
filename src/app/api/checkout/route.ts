@@ -40,8 +40,8 @@ export async function POST(request: NextRequest) {
     const data = await res.json();
 
     if (!res.ok) {
-      console.error('Stripe API error:', data);
-      return NextResponse.json({ ok: false, error: data.error?.message ?? 'Stripe error' }, { status: 500 });
+      console.error('Stripe API error:', JSON.stringify(data));
+      return NextResponse.json({ ok: false, error: data.error?.message ?? 'Stripe error', param: data.error?.param, baseUrl, body: body.substring(0, 200) }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true, url: data.url });
