@@ -27,8 +27,10 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ ok: true, url: session.url });
-  } catch (err) {
-    console.error('Checkout error:', err);
-    return NextResponse.json({ ok: false, error: 'Checkout failed' }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    const stripeErr = (err as { type?: string; code?: string }).type ?? '';
+    console.error('Checkout error:', message, 'type:', stripeErr);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
