@@ -1,6 +1,6 @@
 import '@/styles/global.css';
 
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getMessages, setRequestLocale } from 'next-intl/server';
 import { Inter, DM_Sans, Sora, Outfit } from 'next/font/google';
@@ -13,6 +13,13 @@ const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'sw
 const dmSans = DM_Sans({ subsets: ['latin'], variable: '--font-dm-sans', display: 'swap' });
 const sora = Sora({ subsets: ['latin'], variable: '--font-sora', display: 'swap' });
 const outfit = Outfit({ subsets: ['latin'], variable: '--font-outfit', display: 'swap' });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: 'cover',
+};
 
 export const metadata: Metadata = {
   icons: [
