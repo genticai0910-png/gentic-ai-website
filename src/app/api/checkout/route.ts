@@ -15,22 +15,26 @@ export async function POST(request: NextRequest) {
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://gentic.pro';
 
-    // Use Stripe REST API directly to avoid SDK connection issues on Vercel
+    // Use Stripe REST API directly — manual form encoding to preserve literal brackets
+    const successUrl = `${baseUrl}/${verticalSlug ?? ''}?checkout=success`;
+    const cancelUrl = `${baseUrl}/${verticalSlug ?? ''}?checkout=cancel`;
+    const body = [
+      'mode=subscription',
+      'payment_method_types[0]=card',
+      `line_items[0][price]=${encodeURIComponent(priceId)}`,
+      'line_items[0][quantity]=1',
+      `success_url=${encodeURIComponent(successUrl)}`,
+      `cancel_url=${encodeURIComponent(cancelUrl)}`,
+      `metadata[verticalSlug]=${encodeURIComponent(verticalSlug ?? '')}`,
+    ].join('&');
+
     const res = await fetch('https://api.stripe.com/v1/checkout/sessions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${secretKey}`,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
-      body: new URLSearchParams({
-        mode: 'subscription',
-        'payment_method_types[0]': 'card',
-        'line_items[0][price]': priceId,
-        'line_items[0][quantity]': '1',
-        success_url: `${baseUrl}/${verticalSlug ?? ''}?checkout=success`,
-        cancel_url: `${baseUrl}/${verticalSlug ?? ''}?checkout=cancel`,
-        'metadata[verticalSlug]': verticalSlug ?? '',
-      }),
+      body,
     });
 
     const data = await res.json();
