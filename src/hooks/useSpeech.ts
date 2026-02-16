@@ -9,14 +9,13 @@ interface UseSpeechReturn {
   isSpeaking: boolean;
   startListening: () => void;
   stopListening: () => void;
+  /** Must be called from a click/tap handler on iOS */
   speak: (text: string) => void;
   stopSpeaking: () => void;
   isTTSSupported: boolean;
   isSTTSupported: boolean;
-  /** @deprecated Use isTTSSupported || isSTTSupported */
   isSupported: boolean;
-  /** Call on first user tap to unlock iOS audio */
-  unlockAudio: () => void;
+  speakingIndex: number | null;
 }
 
 export function useSpeech(): UseSpeechReturn {
@@ -26,25 +25,18 @@ export function useSpeech(): UseSpeechReturn {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isTTSSupported, setIsTTSSupported] = useState(false);
   const [isSTTSupported, setIsSTTSupported] = useState(false);
+  const [speakingIndex, setSpeakingIndex] = useState<number | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
-  const audioUnlockedRef = useRef(false);
-  const pendingTextRef = useRef<string | null>(null);
 
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = window as any;
     const SR = win.SpeechRecognition || win.webkitSpeechRecognition;
-
-    // STT: Chrome (desktop+Android), Edge — NOT iOS Safari
-    if (SR) {
-      setIsSTTSupported(true);
-    }
-
-    // TTS: Supported on iOS Safari, Chrome, Edge, Firefox
+    if (SR) setIsSTTSupported(true);
     if (window.speechSynthesis) {
       setIsTTSSupported(true);
       synthRef.current = window.speechSynthesis;
@@ -56,87 +48,53 @@ export function useSpeech(): UseSpeechReturn {
     }
   }, []);
 
-  // iOS requires the first speechSynthesis.speak() to happen inside a user gesture.
-  // Call this on the first tap/click in the voice modal to "unlock" the audio context.
-  const unlockAudio = useCallback(() => {
-    if (audioUnlockedRef.current) return;
-    if (!synthRef.current) return;
-
-    // Speak a silent utterance to unlock the audio pipeline
-    const silent = new SpeechSynthesisUtterance('');
-    silent.volume = 0;
-    silent.lang = 'en-US';
-    synthRef.current.speak(silent);
-    audioUnlockedRef.current = true;
-
-    // If there's a pending TTS queued before unlock, play it now
-    if (pendingTextRef.current) {
-      const text = pendingTextRef.current;
-      pendingTextRef.current = null;
-      // Small delay to let the silent utterance finish
-      setTimeout(() => speakInternal(text), 100);
-    }
-  }, []);
-
-  const speakInternal = useCallback((text: string) => {
-    if (!synthRef.current) return;
-
-    // On iOS, cancel() immediately before speak() can cause silence.
-    // Only cancel if already speaking.
-    if (synthRef.current.speaking) {
-      synthRef.current.cancel();
-    }
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voices = voicesRef.current.length > 0 ? voicesRef.current : synthRef.current.getVoices();
-
-    // Mobile-friendly voice selection: prefer compact/enhanced voices
-    const preferred = voices.find(v => v.name.includes('Samantha'))
-      ?? voices.find(v => v.name.includes('Karen') && v.lang.startsWith('en'))
-      ?? voices.find(v => v.name.includes('Natural'))
-      ?? voices.find(v => v.name.includes('Google US'))
-      ?? voices.find(v => v.lang.startsWith('en') && v.localService);
-    if (preferred) utterance.voice = preferred;
-    utterance.lang = 'en-US';
-    utterance.rate = 1;
-    utterance.pitch = 1;
-
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      // iOS pauses long utterances after ~15s — resume timer keeps it going
-      resumeTimerRef.current = setInterval(() => {
-        synthRef.current?.resume();
-      }, 5000);
-    };
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
-    };
-
-    utterance.onerror = (event) => {
-      // 'interrupted' and 'canceled' are not real errors — ignore them
-      if (event.error !== 'interrupted' && event.error !== 'canceled') {
-        console.error('TTS error:', event.error);
-      }
-      setIsSpeaking(false);
-      if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
-    };
-
-    synthRef.current.speak(utterance);
-  }, []);
-
   const speak = useCallback((text: string) => {
     if (!synthRef.current) return;
 
-    // If audio hasn't been unlocked yet (no user gesture), queue it
-    if (!audioUnlockedRef.current) {
-      pendingTextRef.current = text;
-      return;
-    }
+    // Cancel any active speech first
+    synthRef.current.cancel();
 
-    speakInternal(text);
-  }, [speakInternal]);
+    // Small delay after cancel to avoid iOS silent bug
+    setTimeout(() => {
+      if (!synthRef.current) return;
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      const voices = voicesRef.current.length > 0 ? voicesRef.current : synthRef.current.getVoices();
+      const preferred = voices.find(v => v.name.includes('Samantha'))
+        ?? voices.find(v => v.name.includes('Karen') && v.lang.startsWith('en'))
+        ?? voices.find(v => v.name.includes('Natural'))
+        ?? voices.find(v => v.name.includes('Google US'))
+        ?? voices.find(v => v.lang.startsWith('en') && v.localService);
+      if (preferred) utterance.voice = preferred;
+      utterance.lang = 'en-US';
+      utterance.rate = 1;
+      utterance.pitch = 1;
+
+      utterance.onstart = () => {
+        setIsSpeaking(true);
+        resumeTimerRef.current = setInterval(() => {
+          synthRef.current?.resume();
+        }, 5000);
+      };
+
+      utterance.onend = () => {
+        setIsSpeaking(false);
+        setSpeakingIndex(null);
+        if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
+      };
+
+      utterance.onerror = (event) => {
+        if (event.error !== 'interrupted' && event.error !== 'canceled') {
+          console.error('TTS error:', event.error);
+        }
+        setIsSpeaking(false);
+        setSpeakingIndex(null);
+        if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
+      };
+
+      synthRef.current.speak(utterance);
+    }, 50);
+  }, []);
 
   const startListening = useCallback(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -144,16 +102,8 @@ export function useSpeech(): UseSpeechReturn {
     const SR = win.SpeechRecognition || win.webkitSpeechRecognition;
     if (!SR) return;
 
-    // Unlock audio on user gesture (mic tap counts)
-    if (!audioUnlockedRef.current && synthRef.current) {
-      const silent = new SpeechSynthesisUtterance('');
-      silent.volume = 0;
-      synthRef.current.speak(silent);
-      audioUnlockedRef.current = true;
-    }
-
     const recognition = new SR();
-    recognition.continuous = false; // false is more reliable on mobile
+    recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
 
@@ -191,6 +141,7 @@ export function useSpeech(): UseSpeechReturn {
   const stopSpeaking = useCallback(() => {
     synthRef.current?.cancel();
     setIsSpeaking(false);
+    setSpeakingIndex(null);
     if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
   }, []);
 
@@ -206,6 +157,6 @@ export function useSpeech(): UseSpeechReturn {
     isTTSSupported,
     isSTTSupported,
     isSupported: isTTSSupported || isSTTSupported,
-    unlockAudio,
+    speakingIndex,
   };
 }

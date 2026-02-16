@@ -17,11 +17,41 @@ interface ChatMessage {
   content: string;
 }
 
+/** Speaker icon — tap to play */
+function SpeakerButton({ onClick, isPlaying }: { onClick: () => void; isPlaying: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className="mt-1 flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition-colors hover:bg-white/10"
+      style={{ color: isPlaying ? 'var(--color-accent)' : 'rgba(255,255,255,0.4)' }}
+      aria-label={isPlaying ? 'Stop speaking' : 'Play audio'}
+    >
+      {isPlaying ? (
+        <>
+          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+          </svg>
+          <span>Stop</span>
+        </>
+      ) : (
+        <>
+          <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M11.383 3.07A1 1 0 0 1 12 4v16a1 1 0 0 1-1.617.786L4.72 16H2a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1h2.72l5.663-4.786a1 1 0 0 1 1 .07zM15.5 8.5a4.5 4.5 0 0 1 0 7" />
+            <path d="M18 5a8.5 8.5 0 0 1 0 14" fillOpacity="0.3" />
+          </svg>
+          <span>Listen</span>
+        </>
+      )}
+    </button>
+  );
+}
+
 export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [useVoice, setUseVoice] = useState(true);
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const ws = useWebSocket();
@@ -41,6 +71,7 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
       speech.stopListening();
       setMessages([]);
       setIsProcessing(false);
+      setPlayingIndex(null);
     }
   }, [isOpen]);
 
@@ -49,11 +80,15 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
       const response = ws.lastResponse;
       setIsProcessing(false);
       setMessages(prev => [...prev, { role: 'assistant', content: response.text }]);
-      if (useVoice && speech.isTTSSupported) {
-        speech.speak(response.text);
-      }
     }
   }, [ws.lastResponse]);
+
+  // Clear playingIndex when speech ends
+  useEffect(() => {
+    if (!speech.isSpeaking && playingIndex !== null) {
+      setPlayingIndex(null);
+    }
+  }, [speech.isSpeaking, playingIndex]);
 
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
@@ -73,8 +108,6 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
   }, [ws, isProcessing]);
 
   const handleMicToggle = useCallback(() => {
-    // Any tap unlocks iOS audio
-    speech.unlockAudio();
     if (speech.isListening) {
       speech.stopListening();
     } else {
@@ -83,10 +116,17 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
     }
   }, [speech]);
 
-  // Unlock iOS audio on any interaction with the modal
-  const handleModalInteraction = useCallback(() => {
-    speech.unlockAudio();
-  }, [speech]);
+  // Called from a direct tap — this IS a user gesture, so iOS allows speak()
+  const handlePlayMessage = useCallback((index: number, text: string) => {
+    if (playingIndex === index && speech.isSpeaking) {
+      speech.stopSpeaking();
+      setPlayingIndex(null);
+    } else {
+      speech.stopSpeaking();
+      setPlayingIndex(index);
+      speech.speak(text);
+    }
+  }, [speech, playingIndex]);
 
   if (!isOpen) return null;
 
@@ -106,8 +146,6 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
           transition={{ duration: 0.3 }}
           className="glass-dark relative flex h-[600px] w-full max-w-lg flex-col overflow-hidden rounded-2xl"
           onClick={e => e.stopPropagation()}
-          onTouchStart={handleModalInteraction}
-          onMouseDown={handleModalInteraction}
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
@@ -119,7 +157,7 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setUseVoice(!useVoice)}
+                onClick={() => { setUseVoice(!useVoice); if (useVoice) speech.stopSpeaking(); }}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${useVoice ? 'bg-white/20 text-white' : 'text-white/50 hover:text-white/70'}`}
               >
                 {useVoice ? 'Voice On' : 'Text Only'}
@@ -144,22 +182,30 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
                 <p className="text-sm text-white/70">
                   {speech.isSTTSupported
                     ? 'Tap the mic to start talking'
-                    : 'Type your message below — Alex will respond with voice'}
+                    : 'Type a message — tap Listen to hear Alex respond'}
                 </p>
               </div>
             )}
 
             {messages.map((msg, i) => (
               <div key={i} className={`mb-3 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
-                    msg.role === 'user'
-                      ? 'text-white'
-                      : 'bg-white/10 text-white/90'
-                  }`}
-                  style={msg.role === 'user' ? { backgroundColor: 'var(--color-accent)' } : undefined}
-                >
-                  {msg.content}
+                <div className={msg.role === 'user' ? '' : 'max-w-[85%]'}>
+                  <div
+                    className={`rounded-2xl px-4 py-2.5 text-sm ${
+                      msg.role === 'user'
+                        ? 'max-w-[80%] text-white'
+                        : 'bg-white/10 text-white/90'
+                    }`}
+                    style={msg.role === 'user' ? { backgroundColor: 'var(--color-accent)' } : undefined}
+                  >
+                    {msg.content}
+                  </div>
+                  {msg.role === 'assistant' && useVoice && speech.isTTSSupported && (
+                    <SpeakerButton
+                      onClick={() => handlePlayMessage(i, msg.content)}
+                      isPlaying={playingIndex === i && speech.isSpeaking}
+                    />
+                  )}
                 </div>
               </div>
             ))}
@@ -184,19 +230,6 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
               </div>
             )}
 
-            {speech.isSpeaking && (
-              <div className="mb-3 flex items-center justify-center gap-2">
-                <div className="flex gap-0.5">
-                  {[...Array(5)].map((_, i) => (
-                    <span key={i} className="inline-block w-1 animate-pulse rounded-full bg-white/40" style={{ height: `${8 + Math.random() * 12}px`, animationDelay: `${i * 100}ms` }} />
-                  ))}
-                </div>
-                <button onClick={() => speech.stopSpeaking()} className="text-xs text-white/50 hover:text-white/80">
-                  Stop
-                </button>
-              </div>
-            )}
-
             <div className="flex items-center gap-3">
               {speech.isSTTSupported && (
                 <button
@@ -212,7 +245,7 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
 
               <form
                 className="flex flex-1 items-center gap-2"
-                onSubmit={e => { e.preventDefault(); speech.unlockAudio(); handleSend(inputText); }}
+                onSubmit={e => { e.preventDefault(); handleSend(inputText); }}
               >
                 <input
                   type="text"
