@@ -79,7 +79,13 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
     if (ws.lastResponse) {
       const response = ws.lastResponse;
       setIsProcessing(false);
+      const newIndex = messages.length; // index of the new assistant message
       setMessages(prev => [...prev, { role: 'assistant', content: response.text }]);
+      // Auto-play on Chrome/Android/desktop — skip on iOS (requires user gesture)
+      if (useVoice && speech.isTTSSupported && !speech.requiresGesture) {
+        setPlayingIndex(newIndex);
+        speech.speak(response.text);
+      }
     }
   }, [ws.lastResponse]);
 
@@ -182,7 +188,9 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
                 <p className="text-sm text-white/70">
                   {speech.isSTTSupported
                     ? 'Tap the mic to start talking'
-                    : 'Type a message — tap Listen to hear Alex respond'}
+                    : speech.requiresGesture
+                      ? 'Type a message — tap Listen to hear Alex respond'
+                      : 'Type a message — Alex will respond with voice'}
                 </p>
               </div>
             )}

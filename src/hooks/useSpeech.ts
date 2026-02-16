@@ -16,6 +16,8 @@ interface UseSpeechReturn {
   isSTTSupported: boolean;
   isSupported: boolean;
   speakingIndex: number | null;
+  /** true on iOS/iPadOS Safari where TTS requires user gesture per call */
+  requiresGesture: boolean;
 }
 
 export function useSpeech(): UseSpeechReturn {
@@ -31,8 +33,15 @@ export function useSpeech(): UseSpeechReturn {
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const [requiresGesture, setRequiresGesture] = useState(false);
 
   useEffect(() => {
+    // Detect iOS/iPadOS — these require speak() in direct user gesture
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    setRequiresGesture(isIOS);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const win = window as any;
     const SR = win.SpeechRecognition || win.webkitSpeechRecognition;
@@ -158,5 +167,6 @@ export function useSpeech(): UseSpeechReturn {
     isSTTSupported,
     isSupported: isTTSSupported || isSTTSupported,
     speakingIndex,
+    requiresGesture,
   };
 }
