@@ -32,9 +32,9 @@ export default function middleware(request: NextRequest) {
     );
 
     if (!isVerticalPath && pathname === '/') {
-      // Rewrite root to the vertical's page
+      // Rewrite root to the vertical's page (must include locale for route matching)
       const url = request.nextUrl.clone();
-      url.pathname = `/${verticalSlug}`;
+      url.pathname = `/${AppConfig.defaultLocale}/${verticalSlug}`;
       return NextResponse.rewrite(url);
     }
 
