@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fire n8n webhook (non-blocking)
+    // Map page-factory fields to n8n Gentic Lead Pipeline expected shape
     const n8nUrl = process.env.N8N_WEBHOOK_URL;
     if (n8nUrl) {
       fetch(n8nUrl, {
@@ -71,10 +72,19 @@ export async function POST(request: NextRequest) {
           ...(process.env.N8N_WEBHOOK_SECRET ? { 'x-webhook-secret': process.env.N8N_WEBHOOK_SECRET } : {}),
         },
         body: JSON.stringify({
+          contactName: data.name,
+          phone: data.phone,
+          email: data.email,
+          businessName: data.company ?? '',
+          businessType: customFields?.businessType ?? 'other',
+          matchedTier: 'growth',
+          currentLeadVolume: Number(customFields?.monthlyLeads) || 0,
+          teamSize: 1,
+          markets: [],
+          painPoints: [],
+          appointmentPreference: 'scheduled',
+          source: `page-factory:${verticalSlug}`,
           leadId: lead.id,
-          verticalSlug,
-          ...data,
-          source: 'page-factory',
         }),
       }).catch(() => { /* non-blocking */ });
     }
