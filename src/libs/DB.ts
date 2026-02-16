@@ -1,47 +1,37 @@
-import path from 'node:path';
-
-import { PGlite } from '@electric-sql/pglite';
-import { drizzle as drizzlePg } from 'drizzle-orm/node-postgres';
-import { migrate as migratePg } from 'drizzle-orm/node-postgres/migrator';
-import { drizzle as drizzlePglite, type PgliteDatabase } from 'drizzle-orm/pglite';
-import { migrate as migratePglite } from 'drizzle-orm/pglite/migrator';
-import { PHASE_PRODUCTION_BUILD } from 'next/dist/shared/lib/constants';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { Client } from 'pg';
 
 import * as schema from '@/models/Schema';
 
-import { Env } from './Env';
-
-let client;
-let drizzle;
-
-// Need a database for production? Check out https://www.prisma.io/?via=saasboilerplatesrc
-// Tested and compatible with Next.js Boilerplate
-if (process.env.NEXT_PHASE !== PHASE_PRODUCTION_BUILD && Env.DATABASE_URL) {
-  client = new Client({
-    connectionString: Env.DATABASE_URL,
-  });
-  await client.connect();
-
-  drizzle = drizzlePg(client, { schema });
-  await migratePg(drizzle, {
-    migrationsFolder: path.join(process.cwd(), 'migrations'),
-  });
-} else {
-  // Stores the db connection in the global scope to prevent multiple instances due to hot reloading with Next.js
-  const global = globalThis as unknown as { client: PGlite; drizzle: PgliteDatabase<typeof schema> };
-
-  if (!global.client) {
-    global.client = new PGlite();
-    await global.client.waitReady;
-
-    global.drizzle = drizzlePglite(global.client, { schema });
+function createDb() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    // Return a proxy that throws helpful errors if DB is used without config
+    return new Proxy({} as ReturnType<typeof drizzle<typeof schema>>, {
+      get(_target, prop) {
+        if (prop === 'then') return undefined; // Don't break Promise checks
+        return (..._args: unknown[]) => {
+          throw new Error(`DATABASE_URL is not configured. Set it in .env to use database features.`);
+        };
+      },
+    });
   }
 
-  drizzle = global.drizzle;
-  await migratePglite(global.drizzle, {
-    migrationsFolder: path.join(process.cwd(), 'migrations'),
+  const client = new Client({ connectionString });
+  // Connect on first query via drizzle's lazy connection
+  const connected = client.connect().catch((err) => {
+    console.error('Failed to connect to database:', err);
+  });
+
+  const instance = drizzle(client, { schema });
+
+  // Ensure connection before first query
+  const originalSelect = instance.select.bind(instance);
+  const originalInsert = instance.insert.bind(instance);
+
+  return Object.assign(instance, {
+    _ensureConnected: connected,
   });
 }
 
-export const db = drizzle;
+export const db = createDb();

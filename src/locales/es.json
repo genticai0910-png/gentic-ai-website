@@ -1,0 +1,41 @@
+{
+  "Index": {
+    "meta_title": "Page Factory — Soluciones Empresariales con IA",
+    "meta_description": "Páginas de aterrizaje multi-vertical para DealiQ, Gentic AI y VoiceScheduleAI."
+  },
+  "Navbar": {
+    "platform": "Plataforma",
+    "pricing": "Precios",
+    "contact": "Contacto"
+  },
+  "Hero": {
+    "primary_button": "Comenzar",
+    "secondary_button": "Ver Precios"
+  },
+  "Pricing": {
+    "section_subtitle": "Precios",
+    "section_title": "Precios simples y transparentes",
+    "button_text": "Comenzar"
+  },
+  "FAQ": {
+    "title": "Preguntas Frecuentes"
+  },
+  "Footer": {
+    "platform": "Plataforma",
+    "pricing": "Precios",
+    "contact": "Contacto",
+    "terms_of_service": "Términos",
+    "privacy_policy": "Privacidad",
+    "copyright": "© {year} {name}"
+  },
+  "LeadForm": {
+    "name_label": "Nombre Completo",
+    "email_label": "Correo Electrónico",
+    "phone_label": "Teléfono",
+    "company_label": "Empresa",
+    "message_label": "Mensaje",
+    "submit_button": "Comenzar",
+    "success_message": "¡Gracias! Nos pondremos en contacto pronto.",
+    "error_message": "Algo salió mal. Inténtalo de nuevo."
+  }
+}

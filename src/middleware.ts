@@ -1,12 +1,16 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import {
-  type NextFetchEvent,
-  type NextRequest,
-  NextResponse,
-} from 'next/server';
 import createMiddleware from 'next-intl/middleware';
+import { type NextRequest, NextResponse } from 'next/server';
 
 import { AllLocales, AppConfig } from './utils/AppConfig';
+
+const DOMAIN_MAP: Record<string, string> = {
+  'gentic.pro': 'gentic-ai',
+  'www.gentic.pro': 'gentic-ai',
+  'dealiq.click': 'dealiq',
+  'www.dealiq.click': 'dealiq',
+  'voicescheduleai.com': 'voicescheduleai',
+  'www.voicescheduleai.com': 'voicescheduleai',
+};
 
 const intlMiddleware = createMiddleware({
   locales: AllLocales,
@@ -14,60 +18,40 @@ const intlMiddleware = createMiddleware({
   defaultLocale: AppConfig.defaultLocale,
 });
 
-const isProtectedRoute = createRouteMatcher([
-  '/dashboard(.*)',
-  '/:locale/dashboard(.*)',
-  '/onboarding(.*)',
-  '/:locale/onboarding(.*)',
-  '/api(.*)',
-  '/:locale/api(.*)',
-]);
+export default function middleware(request: NextRequest) {
+  const hostname = request.headers.get('host')?.split(':')[0] ?? '';
+  const verticalSlug = DOMAIN_MAP[hostname];
 
-export default function middleware(
-  request: NextRequest,
-  event: NextFetchEvent,
-) {
-  if (
-    request.nextUrl.pathname.includes('/sign-in')
-    || request.nextUrl.pathname.includes('/sign-up')
-    || isProtectedRoute(request)
-  ) {
-    return clerkMiddleware(async (auth, req) => {
-      if (isProtectedRoute(req)) {
-        const locale
-          = req.nextUrl.pathname.match(/(\/.*)\/dashboard/)?.at(1) ?? '';
+  if (verticalSlug) {
+    const { pathname } = request.nextUrl;
+    // If already targeting a vertical route, pass through
+    const verticalSlugs = Object.values(DOMAIN_MAP);
+    const isVerticalPath = verticalSlugs.some(
+      slug => pathname === `/${slug}` || pathname.startsWith(`/${slug}/`)
+        || AllLocales.some(l => pathname === `/${l}/${slug}` || pathname.startsWith(`/${l}/${slug}/`)),
+    );
 
-        const signInUrl = new URL(`${locale}/sign-in`, req.url);
+    if (!isVerticalPath && pathname === '/') {
+      // Rewrite root to the vertical's page
+      const url = request.nextUrl.clone();
+      url.pathname = `/${verticalSlug}`;
+      return NextResponse.rewrite(url);
+    }
 
-        await auth.protect({
-          // `unauthenticatedUrl` is needed to avoid error: "Unable to find `next-intl` locale because the middleware didn't run on this request"
-          unauthenticatedUrl: signInUrl.toString(),
-        });
+    if (!isVerticalPath) {
+      // For locale-prefixed paths like /es, rewrite to /es/vertical-slug
+      const localeMatch = pathname.match(/^\/([a-z]{2})\/?$/);
+      if (localeMatch) {
+        const url = request.nextUrl.clone();
+        url.pathname = `/${localeMatch[1]}/${verticalSlug}`;
+        return NextResponse.rewrite(url);
       }
-
-      const authObj = await auth();
-
-      if (
-        authObj.userId
-        && !authObj.orgId
-        && req.nextUrl.pathname.includes('/dashboard')
-        && !req.nextUrl.pathname.endsWith('/organization-selection')
-      ) {
-        const orgSelection = new URL(
-          '/onboarding/organization-selection',
-          req.url,
-        );
-
-        return NextResponse.redirect(orgSelection);
-      }
-
-      return intlMiddleware(req);
-    })(request, event);
+    }
   }
 
   return intlMiddleware(request);
 }
 
 export const config = {
-  matcher: ['/((?!.+\\.[\\w]+$|_next|monitoring).*)', '/', '/(api|trpc)(.*)'], // Also exclude tunnelRoute used in Sentry from the matcher
+  matcher: ['/((?!.+\\.[\\w]+$|_next|monitoring|api).*)', '/', '/(api)(.*)'],
 };
