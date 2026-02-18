@@ -29,14 +29,16 @@ export function LeadCaptureForm({ vertical }: LeadCaptureFormProps) {
   const onSubmit = async (data: LeadFormData) => {
     setStatus('submitting');
     try {
-      // Capture UTM params
+      // Capture UTM params — check URL first, fall back to localStorage
       const params = new URLSearchParams(window.location.search);
+      let stored: Record<string, string> = {};
+      try { stored = JSON.parse(localStorage.getItem('clue_utm') || '{}'); } catch { /* ignore */ }
       const utmData = {
-        utmSource: params.get('utm_source') ?? undefined,
-        utmMedium: params.get('utm_medium') ?? undefined,
-        utmCampaign: params.get('utm_campaign') ?? undefined,
-        utmContent: params.get('utm_content') ?? undefined,
-        utmTerm: params.get('utm_term') ?? undefined,
+        utmSource: params.get('utm_source') ?? stored.utm_source ?? undefined,
+        utmMedium: params.get('utm_medium') ?? stored.utm_medium ?? undefined,
+        utmCampaign: params.get('utm_campaign') ?? stored.utm_campaign ?? undefined,
+        utmContent: params.get('utm_content') ?? stored.utm_content ?? undefined,
+        utmTerm: params.get('utm_term') ?? stored.utm_term ?? undefined,
       };
 
       const res = await fetch('/api/leads', {
