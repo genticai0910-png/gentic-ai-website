@@ -30,7 +30,7 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const sessionIdRef = useRef<string | null>(null);
 
-  const connect = useCallback(() => {
+  const connect = useCallback((metadata?: Record<string, string>) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
     const wsUrl = process.env.NEXT_PUBLIC_WS_URL ?? 'wss://api.gentic.pro/ws';
     const newSessionId = generateSessionId();
@@ -40,7 +40,7 @@ export function useWebSocket() {
       const ws = new WebSocket(wsUrl);
       ws.onopen = () => {
         setIsConnected(true);
-        ws.send(JSON.stringify({ type: 'start', sessionId: newSessionId }));
+        ws.send(JSON.stringify({ type: 'start', sessionId: newSessionId, ...metadata }));
       };
       ws.onmessage = (event: MessageEvent) => {
         try {

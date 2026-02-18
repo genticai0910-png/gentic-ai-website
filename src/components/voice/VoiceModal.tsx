@@ -63,7 +63,14 @@ export function VoiceModal({ isOpen, onClose, vertical }: VoiceModalProps) {
 
   useEffect(() => {
     if (isOpen && !ws.isConnected) {
-      ws.connect();
+      // Pass UTM params to WebSocket for voice conversation attribution
+      const params = new URLSearchParams(window.location.search);
+      const utmMeta: Record<string, string> = {};
+      for (const key of ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content']) {
+        const val = params.get(key);
+        if (val) utmMeta[key] = val;
+      }
+      ws.connect(Object.keys(utmMeta).length > 0 ? utmMeta : undefined);
     }
     if (!isOpen && ws.isConnected) {
       ws.disconnect();

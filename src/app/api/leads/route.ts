@@ -85,6 +85,31 @@ export async function POST(request: NextRequest) {
           appointmentPreference: 'scheduled',
           source: `page-factory:${verticalSlug}`,
           leadId: lead.id,
+          utm_source: utmSource,
+          utm_medium: utmMedium,
+          utm_campaign: utmCampaign,
+          utm_content: utmContent,
+          utm_term: utmTerm,
+        }),
+      }).catch(() => { /* non-blocking */ });
+    }
+
+    // Fire social lead capture webhook when UTM indicates social traffic
+    const socialLeadUrl = process.env.N8N_SOCIAL_LEAD_WEBHOOK_URL;
+    if (socialLeadUrl && (utmMedium === 'social' || ['twitter', 'linkedin', 'instagram', 'facebook'].includes(utmSource ?? ''))) {
+      fetch(socialLeadUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          company: data.company ?? '',
+          vertical: verticalSlug,
+          source_platform: utmSource ?? 'organic',
+          utm_campaign: utmCampaign,
+          utm_content: utmContent,
+          lead_id: lead.id,
         }),
       }).catch(() => { /* non-blocking */ });
     }
