@@ -10,16 +10,19 @@ interface PricingSectionProps {
 }
 
 export default function PricingSection({ content, vertical }: PricingSectionProps) {
-  const handleCheckout = async (priceId?: string) => {
-    if (!priceId) return;
+  const handleCheckout = async (planName: string, priceId?: string) => {
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priceId, verticalSlug: vertical.slug }),
+        body: JSON.stringify({ priceId, planName, verticalSlug: vertical.slug }),
       });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        console.error('Checkout failed:', data.error);
+      }
     } catch (err) {
       console.error('Checkout error:', err);
     }
@@ -116,7 +119,7 @@ export default function PricingSection({ content, vertical }: PricingSectionProp
               </ul>
 
               <button
-                onClick={() => handleCheckout(plan.priceId)}
+                onClick={() => handleCheckout(plan.name, plan.priceId)}
                 className={`w-full rounded-full py-3.5 text-base font-semibold transition-all ${plan.popular ? 'text-white' : 'border border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50'}`}
                 style={plan.popular ? { backgroundColor: 'var(--color-accent)', boxShadow: `0 4px 16px var(--color-accent-glow)` } : { color: 'var(--color-text-primary)' }}
               >

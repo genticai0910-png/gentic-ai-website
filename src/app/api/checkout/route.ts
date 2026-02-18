@@ -1,5 +1,11 @@
 import { NextResponse, type NextRequest } from 'next/server';
 
+// Server-side price map — fallback when DB records lack priceId
+const PRICE_MAP: Record<string, string> = {
+  'Growth Engine': process.env.STRIPE_PRICE_GROWTH || '',
+  'Lead Recovery': process.env.STRIPE_PRICE_LEAD_RECOVERY || '',
+};
+
 export async function POST(request: NextRequest) {
   try {
     const secretKey = process.env.STRIPE_SECRET_KEY;
@@ -7,10 +13,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: 'Stripe not configured' }, { status: 500 });
     }
 
-    const { priceId, verticalSlug } = await request.json();
+    const { priceId, planName, verticalSlug } = await request.json();
 
-    if (!priceId) {
-      return NextResponse.json({ ok: false, error: 'priceId required' }, { status: 400 });
+    // Use direct priceId if provided, otherwise resolve from plan name
+    const resolvedPriceId = priceId || PRICE_MAP[planName];
+
+    if (!resolvedPriceId) {
+      return NextResponse.json({ ok: false, error: 'No price found for this plan' }, { status: 400 });
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://gentic.pro';
@@ -21,7 +30,7 @@ export async function POST(request: NextRequest) {
     const body = [
       'mode=subscription',
       'payment_method_types[0]=card',
-      `line_items[0][price]=${encodeURIComponent(priceId)}`,
+      `line_items[0][price]=${encodeURIComponent(resolvedPriceId)}`,
       'line_items[0][quantity]=1',
       `success_url=${encodeURIComponent(successUrl)}`,
       `cancel_url=${encodeURIComponent(cancelUrl)}`,

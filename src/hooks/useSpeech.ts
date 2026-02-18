@@ -32,6 +32,7 @@ export function useSpeech(): UseSpeechReturn {
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const resumeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const speakDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
   const [requiresGesture, setRequiresGesture] = useState(false);
 
@@ -58,13 +59,26 @@ export function useSpeech(): UseSpeechReturn {
   }, []);
 
   const speak = useCallback((text: string) => {
-    if (!synthRef.current) return;
+    const synth = synthRef.current;
+    if (!synth) return;
 
-    // Cancel any active speech first
-    synthRef.current.cancel();
+    // Debounce rapid speak calls (prevents stuttering from rapid WS responses)
+    if (speakDebounceRef.current) {
+      clearTimeout(speakDebounceRef.current);
+    }
 
-    // Small delay after cancel to avoid iOS silent bug
-    setTimeout(() => {
+    // Cancel any active speech
+    synth.cancel();
+
+    // Clear previous resume timer
+    if (resumeTimerRef.current) {
+      clearInterval(resumeTimerRef.current);
+      resumeTimerRef.current = null;
+    }
+
+    // Brief delay after cancel to let audio buffer drain (fixes iOS silent bug + overlap)
+    speakDebounceRef.current = setTimeout(() => {
+      speakDebounceRef.current = null;
       if (!synthRef.current) return;
 
       const utterance = new SpeechSynthesisUtterance(text);
@@ -81,28 +95,42 @@ export function useSpeech(): UseSpeechReturn {
 
       utterance.onstart = () => {
         setIsSpeaking(true);
+        // Chrome workaround: TTS pauses after ~15s on long utterances.
+        // Only call resume() when actually paused — unconditional resume() causes glitches.
         resumeTimerRef.current = setInterval(() => {
-          synthRef.current?.resume();
+          if (!synthRef.current?.speaking) {
+            if (resumeTimerRef.current) {
+              clearInterval(resumeTimerRef.current);
+              resumeTimerRef.current = null;
+            }
+            return;
+          }
+          if (synthRef.current.paused) {
+            synthRef.current.resume();
+          }
         }, 5000);
       };
 
       utterance.onend = () => {
         setIsSpeaking(false);
         setSpeakingIndex(null);
-        if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
+        if (resumeTimerRef.current) {
+          clearInterval(resumeTimerRef.current);
+          resumeTimerRef.current = null;
+        }
       };
 
-      utterance.onerror = (event) => {
-        if (event.error !== 'interrupted' && event.error !== 'canceled') {
-          console.error('TTS error:', event.error);
-        }
+      utterance.onerror = () => {
         setIsSpeaking(false);
         setSpeakingIndex(null);
-        if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
+        if (resumeTimerRef.current) {
+          clearInterval(resumeTimerRef.current);
+          resumeTimerRef.current = null;
+        }
       };
 
       synthRef.current.speak(utterance);
-    }, 50);
+    }, 80);
   }, []);
 
   const startListening = useCallback(() => {
@@ -148,10 +176,17 @@ export function useSpeech(): UseSpeechReturn {
   }, []);
 
   const stopSpeaking = useCallback(() => {
+    if (speakDebounceRef.current) {
+      clearTimeout(speakDebounceRef.current);
+      speakDebounceRef.current = null;
+    }
+    if (resumeTimerRef.current) {
+      clearInterval(resumeTimerRef.current);
+      resumeTimerRef.current = null;
+    }
     synthRef.current?.cancel();
     setIsSpeaking(false);
     setSpeakingIndex(null);
-    if (resumeTimerRef.current) clearInterval(resumeTimerRef.current);
   }, []);
 
   return {
